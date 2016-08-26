@@ -99,7 +99,6 @@ def convert_to_vrt(subdatasets, data_dir):
     # Enumerate to keep the bands in order
 
     for index, subd in enumerate(subdatasets):
-
         # Generate output name from the band names
         output_name = os.path.join(
             data_dir,
@@ -122,7 +121,7 @@ def clear_temp_files(data_dir, vrt_output):
     shutil.rmtree(data_dir)
 
 
-def hdf2tif(hdf, reproject=True):
+def hdf2tif(hdf, overwrite, reproject=True):
     """
     Converts hdf files to tiff files
 
@@ -131,6 +130,12 @@ def hdf2tif(hdf, reproject=True):
     :return: None
     """
 
+    if overwrite:
+        try:
+            os.remove(list_files(DIRECTORY, 'tif')[0])
+        except IndexError:
+            pass
+        
     dataset = gdal.Open(hdf, gdal.GA_ReadOnly)
     subdatasets = dataset.GetSubDatasets()
     data_dir = create_output_directory(hdf)
@@ -156,10 +161,11 @@ def hdf2tif(hdf, reproject=True):
 
 @click.command()
 @click.option('--hdf_file', help="Input hdf file")
-def main(hdf_file):
+@click.option('--overwrite', default=True, help="Overwrite the created tiff")
+def main(hdf_file, overwrite):
     """ Main function which orchestrates the conversion """
 
-    hdf2tif(hdf_file)
+    hdf2tif(hdf_file, overwrite)
 
 if __name__ == "__main__":
     main()
