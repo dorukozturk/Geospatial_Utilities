@@ -157,6 +157,18 @@ def hdf2tif(hdf, overwrite, reproject=True):
         gdal.Warp(output_tiff,
               vrt_output, options=warp_options)
 
+    metadata = []
+    
+    # Add the metadata
+    for index, subd in enumerate(subdatasets):
+        # Generate band names
+        band_name = "{}:{}".format(str(index + 1).zfill(2),
+                                          subd[0].split(":")[4])
+        metadata.append(band_name)
+
+    # Inject the metadata to the tiff
+    gdal.Open(output_tiff).SetMetadata(str(metadata))
+
     clear_temp_files(data_dir, vrt_output)
 
     return output_tiff
