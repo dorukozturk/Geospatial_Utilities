@@ -146,7 +146,7 @@ def hdf2tif(hdf, overwrite, reproject=True):
     gdal.BuildVRT(vrt_output, sorted(vrt_list), options=vrt_options)
     if reproject:
         proj = "+proj=sinu +R=6371007.181 +nadgrids=@null +wktext"
-        warp_options = gdal.WarpOptions(srcSRS=proj, dstSRS="EPSG:3857")
+        warp_options = gdal.WarpOptions(srcSRS=proj, dstSRS="EPSG:4326")
     else:
         warp_options = ""
     output_tiff = vrt_output.replace(".vrt", "_reprojected.tif")
