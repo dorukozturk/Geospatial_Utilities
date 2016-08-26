@@ -3,6 +3,7 @@ import os
 import shutil
 from xml.etree.ElementTree import parse, SubElement
 
+import click
 import gdal
 
 
@@ -153,12 +154,12 @@ def hdf2tif(hdf, reproject=True):
 
     return output_tiff
 
-def main():
+@click.command()
+@click.option('--hdf_file', help="Input hdf file")
+def main(hdf_file):
     """ Main function which orchestrates the conversion """
 
-    hdf_files = list_files(DIRECTORY, 'hdf')
-    for hdf in hdf_files:
-        hdf2tif(hdf)
+    hdf2tif(hdf_file)
 
 if __name__ == "__main__":
     main()

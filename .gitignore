@@ -1,1 +1,4 @@
 *.pyc
+*.hdf
+*.tif
+*.aux.xml
