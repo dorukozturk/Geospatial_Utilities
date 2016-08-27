@@ -86,7 +86,7 @@ def modify_vrt(vrt, scale):
     doc.write(vrt, xml_declaration=True)
 
 
-def convert_to_vrt(subdatasets, data_dir):
+def convert_to_vrt(subdatasets, data_dir, bands):
     """
     Loops through the subdatasets and creates vrt files
 
@@ -95,25 +95,40 @@ def convert_to_vrt(subdatasets, data_dir):
     :return: None
     """
 
-    # For every subdataset loop through the subdatasets
-    # Enumerate to keep the bands in order
+    if bands:
+        bands = [int(str(b)) for b in bands]
+        subdatasets_dict = dict((key,value) for key, value in enumerate(subdatasets, start=1)
+                           if key in bands)
+        for order, band in enumerate(bands, start=1):
+            output_name = os.path.join(
+                data_dir,
+                "{}_Band{}_{}.vrt".format(
+                    str(order).zfill(2),
+                    str(band).zfill(2),
+                    subdatasets_dict[band][0].split(":")[-1]))
+                    # Create the virtual raster
 
-    for index, subd in enumerate(subdatasets):
-        # Generate output name from the band names
-        output_name = os.path.join(
-            data_dir,
-            "Band_{}_{}.vrt".format(str(index + 1).zfill(2),
-                                    subd[0].split(":")[4]))
+            gdal.BuildVRT(output_name, subdatasets_dict[band][0])
 
-        # Create the virtual raster
-        gdal.BuildVRT(output_name, subd[0])
+            # Check if scale and offset exists
+            scale = get_metadata_item(subdatasets_dict[band][0], 'scale')
 
-        # Check if scale and offset exists
-        scale = get_metadata_item(subd[0], 'scale')
+            modify_vrt(output_name, scale)          
+    else:
+        subdatasets_dict = dict(enumerate(subdatasets, start=1))
+        for order, band in subdatasets_dict.items():
+            output_name = os.path.join(
+                data_dir,
+                "Band{}_{}.vrt".format(
+                    str(order).zfill(2),
+                    subdatasets_dict[order][0]))
 
-        modify_vrt(output_name, scale)
+            gdal.BuildVRT(output_name, subdatasets_dict[order][0])
 
+            scale = get_metadata_item(subdatasets_dict[order][0], 'scale')
 
+            modify_vrt(output_name, scale)
+    
 def clear_temp_files(data_dir, vrt_output):
     """ Removes the temporary files """
 
@@ -121,7 +136,7 @@ def clear_temp_files(data_dir, vrt_output):
     shutil.rmtree(data_dir)
 
 
-def hdf2tif(hdf, overwrite, reproject=True):
+def hdf2tif(hdf, overwrite, bands, reproject=True):
     """
     Converts hdf files to tiff files
 
@@ -139,7 +154,7 @@ def hdf2tif(hdf, overwrite, reproject=True):
     dataset = gdal.Open(hdf, gdal.GA_ReadOnly)
     subdatasets = dataset.GetSubDatasets()
     data_dir = create_output_directory(hdf)
-    convert_to_vrt(subdatasets, data_dir)
+    convert_to_vrt(subdatasets, data_dir, bands)
     vrt_options = gdal.BuildVRTOptions(separate=True)
     vrt_list = list_files(data_dir, 'vrt')
     vrt_output = hdf.replace('.hdf', '.vrt')
@@ -151,7 +166,7 @@ def hdf2tif(hdf, overwrite, reproject=True):
                                         multithread=True)
     else:
         warp_options = ""
-    output_tiff = vrt_output.replace(".vrt", "_reprojected.tif")
+    output_tiff = vrt_output.replace(".vrt", ".tif")
 
     if not os.path.exists(output_tiff):
         gdal.Warp(output_tiff,
@@ -174,12 +189,13 @@ def hdf2tif(hdf, overwrite, reproject=True):
     return output_tiff
 
 @click.command()
-@click.option('--hdf_file', help="Input hdf file")
+@click.argument('hdf_file')
+@click.argument('bands', nargs=-1)
 @click.option('--overwrite', default=True, help="Overwrite the created tiff")
-def main(hdf_file, overwrite):
+def main(hdf_file, overwrite, bands):
     """ Main function which orchestrates the conversion """
 
-    hdf2tif(hdf_file, overwrite)
+    hdf2tif(hdf_file, overwrite, bands)
 
 if __name__ == "__main__":
     main()
