@@ -2,3 +2,4 @@
 *.hdf
 *.tif
 *.aux.xml
+*.egg-info/
