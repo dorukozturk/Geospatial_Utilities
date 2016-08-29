@@ -126,23 +126,22 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
             warp_options = ""
 
         if not clobber and os.path.exists(tiff_path):
-            raise RuntimeError("{} already exists, use '--clober' to overwrite"
-                               % tiff_path)
+            raise RuntimeError(
+                "{} already exists, use '--clober' to overwrite".format(tiff_path))
 
         gdal.Warp(tiff_path,
                   vrt_output, options=warp_options)
 
-        metadata = []
+        metadata = {}
 
         # Add the metadata
-        for index, subd in enumerate(subdatasets):
+        for idx, band in enumerate(bands):
             # Generate band names
-            band_name = "{}:{}".format(str(index + 1).zfill(2),
-                                       subd[0].split(":")[4])
-            metadata.append(band_name)
+            key = "BAND_{}_NAME".format(idx + 1)
+            metadata[key] = str(subdatasets[band - 1][0].split(":")[4])
 
         # Inject the metadata to the tiff
-        gdal.Open(tiff_path).SetMetadata(str(metadata))
+        gdal.Open(tiff_path).SetMetadata(metadata)
 
     return tiff_path
 
