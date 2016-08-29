@@ -150,10 +150,10 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
 
 def serial_process(hdf_files, **kwargs):
     for hdf_file in hdf_files:
-        multiprocess_worker((hdf_file, kwargs))
+        process_file((hdf_file, kwargs))
 
 
-def multiprocess_worker((hdf_file, kwargs)):
+def process_file((hdf_file, kwargs)):
     output_dir = kwargs.pop("output_dir", None)
 
     if output_dir is None:
@@ -194,7 +194,7 @@ def main(hdf_files, output, bands, warpmemorylimit, jobs, clobber, reproject):
         serial_process(hdf_files, **kwargs)
     else:
         p = multiprocessing.Pool(jobs)
-        p.map(multiprocess_worker, zip(hdf_files, [kwargs] * len(hdf_files)))
+        p.map(process_file, zip(hdf_files, [kwargs] * len(hdf_files)))
 
 if __name__ == "__main__":
     main()
