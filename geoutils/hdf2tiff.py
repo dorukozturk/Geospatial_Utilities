@@ -94,40 +94,29 @@ def convert_to_vrt(subdatasets, data_dir, bands):
     :param data_dir: Result of create_output_directory method
     :return: None
     """
+    data_list = []
 
-    if bands:
-        bands = [int(str(b)) for b in bands]
-        subdatasets_dict = dict((key,value) for key, value in enumerate(subdatasets, start=1)
-                           if key in bands)
-        for order, band in enumerate(bands, start=1):
-            output_name = os.path.join(
-                data_dir,
-                "{}_Band{}_{}.vrt".format(
-                    str(order).zfill(2),
-                    str(band).zfill(2),
-                    subdatasets_dict[band][0].split(":")[-1]))
-                    # Create the virtual raster
+    # 'bands' passed in from user refer to bands indexed from 1
+    # make sure we decrement each band passed in so they we access the
+    # 0 indexed band value inside the subdatasets list.
+    for band in [b-1 for b in bands]:
+        output_name = os.path.join(
+            data_dir,
+            "Band{}_{}.vrt".format(
+                str(band + 1).zfill(2),
+                subdatasets[band][0].split(":")[-1]))
+        # Create the virtual raster
 
-            gdal.BuildVRT(output_name, subdatasets_dict[band][0])
+        gdal.BuildVRT(output_name, subdatasets[band][0])
 
-            # Check if scale and offset exists
-            scale = get_metadata_item(subdatasets_dict[band][0], 'scale')
+        # Check if scale and offset exists
+        scale = get_metadata_item(subdatasets[band][0], 'scale')
 
-            modify_vrt(output_name, scale)
-    else:
-        subdatasets_dict = dict(enumerate(subdatasets, start=1))
-        for order, band in subdatasets_dict.items():
-            output_name = os.path.join(
-                data_dir,
-                "Band{}_{}.vrt".format(
-                    str(order).zfill(2),
-                    subdatasets_dict[order][0]))
+        modify_vrt(output_name, scale)
 
-            gdal.BuildVRT(output_name, subdatasets_dict[order][0])
+        data_list.append(output_name)
 
-            scale = get_metadata_item(subdatasets_dict[order][0], 'scale')
-
-            modify_vrt(output_name, scale)
+    return data_list
 
 def clear_temp_files(data_dir, vrt_output):
     """ Removes the temporary files """
@@ -136,7 +125,8 @@ def clear_temp_files(data_dir, vrt_output):
     shutil.rmtree(data_dir)
 
 
-def hdf2tif(hdf, bands=None, clobber=False, reproject=True):
+def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
+            reproject=True, warpMemoryLimit=4096):
     """
     Converts hdf files to tiff files
 
@@ -145,33 +135,33 @@ def hdf2tif(hdf, bands=None, clobber=False, reproject=True):
     :return: None
     """
 
-    if clobber:
-        try:
-            os.remove(list_files(DIRECTORY, 'tif')[0])
-        except IndexError:
-            pass
-
     dataset = gdal.Open(hdf, gdal.GA_ReadOnly)
     subdatasets = dataset.GetSubDatasets()
+
+    # Use bands passed in,  or list of all bands (indexed from 1)
+    bands = bands if bands is not None else range(1, len(subdatasets) + 1)
+
     data_dir = create_output_directory(hdf)
-    convert_to_vrt(subdatasets, data_dir, bands)
+
+    vrt_list = convert_to_vrt(subdatasets, data_dir, bands)
     vrt_options = gdal.BuildVRTOptions(separate=True)
-    vrt_list = list_files(data_dir, 'vrt')
     vrt_output = hdf.replace('.hdf', '.vrt')
-    gdal.BuildVRT(vrt_output, sorted(vrt_list), options=vrt_options)
+
+    gdal.BuildVRT(vrt_output, vrt_list, options=vrt_options)
     if reproject:
         proj = "+proj=sinu +R=6371007.181 +nadgrids=@null +wktext"
         warp_options = gdal.WarpOptions(srcSRS=proj, dstSRS="EPSG:4326",
-                                        warpMemoryLimit="4096",
+                                        warpMemoryLimit=warpMemoryLimit,
                                         multithread=True)
     else:
         warp_options = ""
 
-    output_tiff = vrt_output.replace(".vrt", ".tif")
+    if not clobber and os.path.exists(tiff_path):
+        raise RuntimeError("{} already exists, use '--clober' to overwrite"
+                           % tiff_path)
 
-    if not os.path.exists(output_tiff):
-        gdal.Warp(output_tiff,
-                  vrt_output, options=warp_options)
+    gdal.Warp(tiff_path,
+              vrt_output, options=warp_options)
 
     metadata = []
 
@@ -183,11 +173,11 @@ def hdf2tif(hdf, bands=None, clobber=False, reproject=True):
         metadata.append(band_name)
 
     # Inject the metadata to the tiff
-    gdal.Open(output_tiff).SetMetadata(str(metadata))
+    gdal.Open(tiff_path).SetMetadata(str(metadata))
 
     clear_temp_files(data_dir, vrt_output)
 
-    return output_tiff
+    return tiff_path
 
 
 class IntCSVParamType(click.ParamType):
@@ -202,15 +192,28 @@ class IntCSVParamType(click.ParamType):
 
 
 @click.command()
-@click.argument('hdf_file')
-@click.option('--bands', '-b', default=None, type=IntCSVParamType(),
+@click.argument('hdf_file', type=click.Path(resolve_path=True))
+@click.option('-o', '--output', default=None, type=click.Path(writable=True),
+              help="Output file/directory")
+@click.option('-b', '--bands', default=None, type=IntCSVParamType(),
               help="Only include specified bands (formated as csv)")
+@click.option('-w', '--warpMemoryLimit', default=4096,
+              help="Memory limit for Warp operation")
 @click.option('--clobber/--no-clobber', default=False, help="Overwrite the created tiff")
-@click.option('--clobber/--no-clobber', default=False, help="Overwrite the created tiff")
-def main(hdf_file, bands, clobber):
+@click.option('--reproject/--no-reproject', default=True, help="Reproject the tiff")
+def main(hdf_file, output, bands, warpmemorylimit, clobber, reproject):
     """ Main function which orchestrates the conversion """
+    import pudb; pu.db
 
-    hdf2tif(hdf_file, bands, clobber)
+    if output is None:
+        output, _ = os.path.splitext(hdf_file)
+        output += ".tiff"
+
+    hdf2tif(hdf_file, output,
+            bands=bands,
+            warpMemoryLimit=warpmemorylimit,
+            clobber=clobber,
+            reproject=reproject)
 
 if __name__ == "__main__":
     main()
