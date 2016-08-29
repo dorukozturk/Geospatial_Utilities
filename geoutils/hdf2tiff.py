@@ -5,36 +5,9 @@ from xml.etree.ElementTree import parse, SubElement
 
 import click
 import gdal
-
+from utils import IntCSVParamType, TemporaryDirectory
 
 DIRECTORY = os.path.dirname(os.path.realpath(__file__))
-
-
-def list_files(directory, extension):
-    """
-    Lists all the files in a given directory with a wildcard
-
-    :param directory: Directory to be checked
-    :param extension: File extension to be searched
-    :return: List of files matching the extension
-    """
-
-    return glob.glob(os.path.join(directory, '*.{}'.format(extension)))
-
-
-def create_output_directory(hdf):
-    """
-    Creates a unique output directory to store the intermediate vrt files
-
-    :param hdf: HDF file to be processed
-    :return: Folder
-    """
-
-    direc = os.path.splitext(hdf)[0]
-    if not os.path.exists(direc):
-        os.makedirs(direc)
-
-    return direc
 
 
 def get_metadata_item(subdataset, keyword):
@@ -118,13 +91,6 @@ def convert_to_vrt(subdatasets, data_dir, bands):
 
     return data_list
 
-def clear_temp_files(data_dir, vrt_output):
-    """ Removes the temporary files """
-
-    os.remove(vrt_output)
-    shutil.rmtree(data_dir)
-
-
 def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
             reproject=True, warpMemoryLimit=4096):
     """
@@ -135,60 +101,50 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
     :return: None
     """
 
+    basename, _ = os.path.splitext(os.path.basename(hdf))
+
     dataset = gdal.Open(hdf, gdal.GA_ReadOnly)
     subdatasets = dataset.GetSubDatasets()
 
     # Use bands passed in,  or list of all bands (indexed from 1)
     bands = bands if bands is not None else range(1, len(subdatasets) + 1)
 
-    data_dir = create_output_directory(hdf)
+    # data_dir = create_output_directory(hdf)
+    with TemporaryDirectory() as data_dir:
+        vrt_list = convert_to_vrt(subdatasets, data_dir, bands)
+        vrt_options = gdal.BuildVRTOptions(separate=True)
+        vrt_output = os.path.join(data_dir, basename + ".vrt")
 
-    vrt_list = convert_to_vrt(subdatasets, data_dir, bands)
-    vrt_options = gdal.BuildVRTOptions(separate=True)
-    vrt_output = hdf.replace('.hdf', '.vrt')
+        gdal.BuildVRT(vrt_output, vrt_list, options=vrt_options)
 
-    gdal.BuildVRT(vrt_output, vrt_list, options=vrt_options)
-    if reproject:
-        proj = "+proj=sinu +R=6371007.181 +nadgrids=@null +wktext"
-        warp_options = gdal.WarpOptions(srcSRS=proj, dstSRS="EPSG:4326",
-                                        warpMemoryLimit=warpMemoryLimit,
-                                        multithread=True)
-    else:
-        warp_options = ""
+        if reproject:
+            proj = "+proj=sinu +R=6371007.181 +nadgrids=@null +wktext"
+            warp_options = gdal.WarpOptions(srcSRS=proj, dstSRS="EPSG:4326",
+                                            warpMemoryLimit=warpMemoryLimit,
+                                            multithread=True)
+        else:
+            warp_options = ""
 
-    if not clobber and os.path.exists(tiff_path):
-        raise RuntimeError("{} already exists, use '--clober' to overwrite"
-                           % tiff_path)
+        if not clobber and os.path.exists(tiff_path):
+            raise RuntimeError("{} already exists, use '--clober' to overwrite"
+                               % tiff_path)
 
-    gdal.Warp(tiff_path,
-              vrt_output, options=warp_options)
+        gdal.Warp(tiff_path,
+                  vrt_output, options=warp_options)
 
-    metadata = []
+        metadata = []
 
-    # Add the metadata
-    for index, subd in enumerate(subdatasets):
-        # Generate band names
-        band_name = "{}:{}".format(str(index + 1).zfill(2),
-                                   subd[0].split(":")[4])
-        metadata.append(band_name)
+        # Add the metadata
+        for index, subd in enumerate(subdatasets):
+            # Generate band names
+            band_name = "{}:{}".format(str(index + 1).zfill(2),
+                                       subd[0].split(":")[4])
+            metadata.append(band_name)
 
-    # Inject the metadata to the tiff
-    gdal.Open(tiff_path).SetMetadata(str(metadata))
-
-    clear_temp_files(data_dir, vrt_output)
+        # Inject the metadata to the tiff
+        gdal.Open(tiff_path).SetMetadata(str(metadata))
 
     return tiff_path
-
-
-class IntCSVParamType(click.ParamType):
-    name = 'csv'
-
-    def convert(self, value, param, ctx):
-        try:
-            if value is not None:
-                return [int(b) for b in value.split(",")]
-        except ValueError:
-            self.fail('%s is not a valid comma seperated list of integers' % value, param, ctx)
 
 
 @click.command()
@@ -203,8 +159,6 @@ class IntCSVParamType(click.ParamType):
 @click.option('--reproject/--no-reproject', default=True, help="Reproject the tiff")
 def main(hdf_file, output, bands, warpmemorylimit, clobber, reproject):
     """ Main function which orchestrates the conversion """
-    import pudb; pu.db
-
     if output is None:
         output, _ = os.path.splitext(hdf_file)
         output += ".tiff"
