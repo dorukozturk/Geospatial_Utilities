@@ -1,4 +1,5 @@
 import multiprocessing
+import errno
 import glob
 import os
 import shutil
@@ -157,6 +158,11 @@ def multiprocess_worker((hdf_file, kwargs)):
 
     if output_dir is None:
         output_dir = os.path.dirname(hdf_file)
+    try:
+        os.makedirs(output_dir)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
 
     file_base, ext = os.path.splitext(os.path.basename(hdf_file))
 
