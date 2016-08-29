@@ -113,7 +113,7 @@ def convert_to_vrt(subdatasets, data_dir, bands):
             # Check if scale and offset exists
             scale = get_metadata_item(subdatasets_dict[band][0], 'scale')
 
-            modify_vrt(output_name, scale)          
+            modify_vrt(output_name, scale)
     else:
         subdatasets_dict = dict(enumerate(subdatasets, start=1))
         for order, band in subdatasets_dict.items():
@@ -128,7 +128,7 @@ def convert_to_vrt(subdatasets, data_dir, bands):
             scale = get_metadata_item(subdatasets_dict[order][0], 'scale')
 
             modify_vrt(output_name, scale)
-    
+
 def clear_temp_files(data_dir, vrt_output):
     """ Removes the temporary files """
 
@@ -136,7 +136,7 @@ def clear_temp_files(data_dir, vrt_output):
     shutil.rmtree(data_dir)
 
 
-def hdf2tif(hdf, overwrite, bands, reproject=True):
+def hdf2tif(hdf, bands=None, clobber=False, reproject=True):
     """
     Converts hdf files to tiff files
 
@@ -145,12 +145,12 @@ def hdf2tif(hdf, overwrite, bands, reproject=True):
     :return: None
     """
 
-    if overwrite:
+    if clobber:
         try:
             os.remove(list_files(DIRECTORY, 'tif')[0])
         except IndexError:
             pass
-        
+
     dataset = gdal.Open(hdf, gdal.GA_ReadOnly)
     subdatasets = dataset.GetSubDatasets()
     data_dir = create_output_directory(hdf)
@@ -166,19 +166,20 @@ def hdf2tif(hdf, overwrite, bands, reproject=True):
                                         multithread=True)
     else:
         warp_options = ""
+
     output_tiff = vrt_output.replace(".vrt", ".tif")
 
     if not os.path.exists(output_tiff):
         gdal.Warp(output_tiff,
-              vrt_output, options=warp_options)
+                  vrt_output, options=warp_options)
 
     metadata = []
-    
+
     # Add the metadata
     for index, subd in enumerate(subdatasets):
         # Generate band names
         band_name = "{}:{}".format(str(index + 1).zfill(2),
-                                          subd[0].split(":")[4])
+                                   subd[0].split(":")[4])
         metadata.append(band_name)
 
     # Inject the metadata to the tiff
@@ -188,14 +189,28 @@ def hdf2tif(hdf, overwrite, bands, reproject=True):
 
     return output_tiff
 
+
+class IntCSVParamType(click.ParamType):
+    name = 'csv'
+
+    def convert(self, value, param, ctx):
+        try:
+            if value is not None:
+                return [int(b) for b in value.split(",")]
+        except ValueError:
+            self.fail('%s is not a valid comma seperated list of integers' % value, param, ctx)
+
+
 @click.command()
 @click.argument('hdf_file')
-@click.argument('bands', nargs=-1)
-@click.option('--overwrite', default=True, help="Overwrite the created tiff")
-def main(hdf_file, overwrite, bands):
+@click.option('--bands', '-b', default=None, type=IntCSVParamType(),
+              help="Only include specified bands (formated as csv)")
+@click.option('--clobber/--no-clobber', default=False, help="Overwrite the created tiff")
+@click.option('--clobber/--no-clobber', default=False, help="Overwrite the created tiff")
+def main(hdf_file, bands, clobber):
     """ Main function which orchestrates the conversion """
 
-    hdf2tif(hdf_file, overwrite, bands)
+    hdf2tif(hdf_file, bands, clobber)
 
 if __name__ == "__main__":
     main()
