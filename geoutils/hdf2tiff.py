@@ -1,3 +1,5 @@
+import multiprocessing
+import errno
 import glob
 import os
 import shutil
@@ -152,27 +154,53 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
     return tiff_path
 
 
+def serial_process(hdf_files, **kwargs):
+    for hdf_file in hdf_files:
+        process_file((hdf_file, kwargs))
+
+
+def process_file((hdf_file, kwargs)):
+    output_dir = kwargs.pop("output_dir", None)
+
+    if output_dir is None:
+        output_dir = os.path.dirname(hdf_file)
+    try:
+        os.makedirs(output_dir)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+
+    file_base, ext = os.path.splitext(os.path.basename(hdf_file))
+
+    hdf2tif(hdf_file, os.path.join(output_dir, file_base + ".tiff"),
+            **kwargs)
+
 @click.command()
-@click.argument('hdf_file', type=click.Path(resolve_path=True))
-@click.option('-o', '--output', default=None, type=click.Path(writable=True),
+@click.argument('hdf_files', nargs=-1,
+                type=click.Path(exists=True, resolve_path=True))
+@click.option('-o', '--output', default=None,
+              type=click.Path(file_okay=False, writable=True),
               help="Output file/directory")
 @click.option('-b', '--bands', default=None, type=IntCSVParamType(),
               help="Only include specified bands (formated as csv)")
 @click.option('-w', '--warpMemoryLimit', default=4096,
               help="Memory limit for Warp operation")
+@click.option('-j', '--jobs', default=0, help="Number of Processes in pool")
 @click.option('--clobber/--no-clobber', default=False, help="Overwrite the created tiff")
 @click.option('--reproject/--no-reproject', default=True, help="Reproject the tiff")
-def main(hdf_file, output, bands, warpmemorylimit, clobber, reproject):
+def main(hdf_files, output, bands, warpmemorylimit, jobs, clobber, reproject):
     """ Main function which orchestrates the conversion """
-    if output is None:
-        output, _ = os.path.splitext(hdf_file)
-        output += ".tiff"
+    kwargs = dict(output_dir=output,
+                  bands=bands,
+                  warpMemoryLimit=warpmemorylimit,
+                  clobber=clobber,
+                  reproject=reproject)
 
-    hdf2tif(hdf_file, output,
-            bands=bands,
-            warpMemoryLimit=warpmemorylimit,
-            clobber=clobber,
-            reproject=reproject)
+    if jobs == 0:
+        serial_process(hdf_files, **kwargs)
+    else:
+        p = multiprocessing.Pool(jobs)
+        p.map(process_file, zip(hdf_files, [kwargs] * len(hdf_files)))
 
 if __name__ == "__main__":
     main()
