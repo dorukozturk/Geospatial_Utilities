@@ -141,7 +141,13 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
             metadata[key] = str(subdatasets[band - 1][0].split(":")[4])
 
         # Inject the metadata to the tiff
-        gdal.Open(tiff_path).SetMetadata(metadata)
+        dataset = gdal.Open(tiff_path, gdal.GA_Update)
+        meta = dataset.GetMetadata()
+        meta['BANDS'] = str(metadata)
+        dataset.SetMetadata(meta)
+
+        # Flush the dataset
+        dataset = None
 
     return tiff_path
 
