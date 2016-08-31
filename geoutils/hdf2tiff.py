@@ -142,11 +142,18 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
             key = "BAND_{}_NAME".format(idx + 1)
             metadata[key] = str(subdatasets[band - 1][0].split(":")[4])
 
-        # Inject the metadata to the tiff
         dataset = gdal.Open(tiff_path, gdal.GA_Update)
+
+        # Inject the metadata to the tiff
         meta = dataset.GetMetadata()
         meta['BANDS'] = str(metadata)
         dataset.SetMetadata(meta)
+
+        # Inject the band statistics so that
+        # we do not have to enter them
+        for band in range(dataset.RasterCount):
+            srcband = dataset.GetRasterBand(band+1)
+            srcband.ComputeStatistics(0)
 
         # Flush the dataset
         dataset = None
