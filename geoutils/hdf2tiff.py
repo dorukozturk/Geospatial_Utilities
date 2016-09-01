@@ -114,7 +114,7 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
     # data_dir = create_output_directory(hdf)
     with TemporaryDirectory() as data_dir:
         vrt_list = convert_to_vrt(subdatasets, data_dir, bands)
-        vrt_options = gdal.BuildVRTOptions(separate=True)
+        vrt_options = gdal.BuildVRTOptions(separate=True, srcNodata=-9999)
         vrt_output = os.path.join(data_dir, basename + ".vrt")
 
         gdal.BuildVRT(vrt_output, vrt_list, options=vrt_options)
@@ -152,8 +152,7 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
         # Inject the band statistics so that
         # we do not have to enter them
         for band in range(dataset.RasterCount):
-            srcband = dataset.GetRasterBand(band+1)
-            srcband.ComputeStatistics(0)
+            srcband = dataset.GetRasterBand(band+1).ComputeStatistics(0)
 
         # Flush the dataset
         dataset = None
