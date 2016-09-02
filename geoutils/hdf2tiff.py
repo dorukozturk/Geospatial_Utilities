@@ -11,6 +11,8 @@ from utils import IntCSVParamType, TemporaryDirectory
 
 DIRECTORY = os.path.dirname(os.path.realpath(__file__))
 
+NO_DATA = -9999
+
 
 def get_metadata_item(subdataset, keyword):
     """
@@ -80,9 +82,15 @@ def convert_to_vrt(subdatasets, data_dir, bands):
             "Band{}_{}.vrt".format(
                 str(band + 1).zfill(2),
                 subdatasets[band][0].split(":")[-1]))
-        # Create the virtual raster
 
-        gdal.BuildVRT(output_name, subdatasets[band][0])
+        # Get the fill value
+        fill_value = get_metadata_item(subdatasets[band][0], 'fillvalue')
+
+        # Pass some options
+        vrt_options = gdal.BuildVRTOptions(srcNodata=fill_value, VRTNodata=NO_DATA)
+
+        # Create the virtual raster
+        gdal.BuildVRT(output_name, subdatasets[band][0], options=vrt_options)
 
         # Check if scale and offset exists
         scale = get_metadata_item(subdatasets[band][0], 'scale')
@@ -114,7 +122,7 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
     # data_dir = create_output_directory(hdf)
     with TemporaryDirectory() as data_dir:
         vrt_list = convert_to_vrt(subdatasets, data_dir, bands)
-        vrt_options = gdal.BuildVRTOptions(separate=True, srcNodata=-9999)
+        vrt_options = gdal.BuildVRTOptions(separate=True, srcNodata=NODATA)
         vrt_output = os.path.join(data_dir, basename + ".vrt")
 
         gdal.BuildVRT(vrt_output, vrt_list, options=vrt_options)
