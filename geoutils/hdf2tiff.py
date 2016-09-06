@@ -122,7 +122,7 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
     # data_dir = create_output_directory(hdf)
     with TemporaryDirectory() as data_dir:
         vrt_list = convert_to_vrt(subdatasets, data_dir, bands)
-        vrt_options = gdal.BuildVRTOptions(separate=True, srcNodata=NODATA)
+        vrt_options = gdal.BuildVRTOptions(separate=True, srcNodata=NO_DATA)
         vrt_output = os.path.join(data_dir, basename + ".vrt")
 
         gdal.BuildVRT(vrt_output, vrt_list, options=vrt_options)
