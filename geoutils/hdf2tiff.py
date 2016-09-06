@@ -142,19 +142,20 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
         gdal.Warp(tiff_path,
                   vrt_output, options=warp_options)
 
-        metadata = {}
+
+        meta = dataset.GetMetadata()
 
         # Add the metadata
         for idx, band in enumerate(bands):
             # Generate band names
             key = "BAND_{}_NAME".format(idx + 1)
-            metadata[key] = str(subdatasets[band - 1][0].split(":")[4])
+            meta[key] = str(subdatasets[band - 1][0].split(":")[4])
 
         dataset = gdal.Open(tiff_path, gdal.GA_Update)
 
         # Inject the metadata to the tiff
-        meta = dataset.GetMetadata()
-        meta['BANDS'] = str(metadata)
+
+        meta['BANDS'] = str(meta)
         dataset.SetMetadata(meta)
 
         # Inject the band statistics so that
