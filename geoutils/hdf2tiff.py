@@ -1,3 +1,4 @@
+import datetime
 import multiprocessing
 import errno
 import glob
@@ -101,6 +102,12 @@ def convert_to_vrt(subdatasets, data_dir, bands):
 
     return data_list
 
+def get_date(year, doy):
+    """ Returns the date of the image """
+
+    date = datetime.datetime(year, 1, 1) + datetime.timedelta(doy-1)
+    return date.isoformat()
+
 def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
             reproject=True, warpMemoryLimit=4096):
     """
@@ -134,7 +141,6 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
                                             multithread=True)
         else:
             warp_options = ""
-
         if not clobber and os.path.exists(tiff_path):
             raise RuntimeError(
                 "{} already exists, use '--clober' to overwrite".format(tiff_path))
@@ -157,6 +163,12 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
 
         meta['BANDS'] = str(meta)
         dataset.SetMetadata(meta)
+
+        doy = int(meta['Mean_JDOY'])
+        year = int(basename.split(".")[3])
+
+        # Set the date time for the dataset
+        dataset.SetMetadataItem("TIFFTAG_DATETIME", get_date(year, doy))
 
         # Inject the band statistics so that
         # we do not have to enter them
