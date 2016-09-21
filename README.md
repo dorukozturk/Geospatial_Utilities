@@ -6,6 +6,7 @@ hdf2tiff -b 3,2,1 L57.Globe.month07.2011.hh09vv04.h6v1.doy182to212.NBAR.v3.0.hdf
 ```
 
 To extract bands 4,3,2 with this order(False Color)
+```sh
 hdf2tiff -b 4,3,2 L57.Globe.month07.2011.hh09vv04.h6v1.doy182to212.NBAR.v3.0.hdf
 ```
 
