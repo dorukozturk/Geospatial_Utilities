@@ -1,18 +1,30 @@
 # Geospatial_Utilities
 
-Call it from command line like this:
-
-This is for extracting rgb:
+To extract bands 3,2,1 with this order(True Color)
 ```sh
-python hdf2tif.py L57.Globe.month07.2011.hh09vv04.h6v1.doy182to212.NBAR.v3.0.hdf 3 2 1
+hdf2tiff -b 3,2,1 L57.Globe.month07.2011.hh09vv04.h6v1.doy182to212.NBAR.v3.0.hdf
 ```
 
-This is another cool visualization called false color
-```sh
-python hdf2tif.py L57.Globe.month07.2011.hh09vv04.h6v1.doy182to212.NBAR.v3.0.hdf 4 3 2
+To extract bands 4,3,2 with this order(False Color)
+hdf2tiff -b 4,3,2 L57.Globe.month07.2011.hh09vv04.h6v1.doy182to212.NBAR.v3.0.hdf
 ```
 
-This is ndvi
+To get a single band 9 (NDVI)
 ```sh
-python hdf2tif.py L57.Globe.month07.2011.hh09vv04.h6v1.doy182to212.NBAR.v3.0.hdf 9
+hdf2tiff -b 9 L57.Globe.month07.2011.hh09vv04.h6v1.doy182to212.NBAR.v3.0.hdf
+```
+
+To convert all the hdf files to tiffs
+```sh
+hdf2tiff -b 3,2,1,9 *.hdf
+```
+
+To overwrite existing tiff files
+```sh
+hdf2tiff -b 3,2,1,9 --clobber *.hdf
+```
+
+To specify a different output directory
+```sh
+hdf2tiff -b 3,2,1 --clobber -o some/dir *.hdf
 ```
