@@ -2,7 +2,7 @@ import os
 from celery import Celery
 
 try:
-    with open(os.path.dirname(__file__) + "/.master", "r") as fh:
+    with open("/public/.master", "r") as fh:
         master_hostname = fh.read().rstrip()
 except IOError:
     master_hostname = 'localhost'

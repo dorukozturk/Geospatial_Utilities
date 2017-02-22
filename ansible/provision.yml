@@ -58,14 +58,14 @@
 
 
     # NOTE:  before merging into master branch has to be changed
-#    - name: Clone NEX repo
-#      git:
-#        repo: https://github.com/OpenGeoscience/nex.git
-#        dest: /public/nex
-#        version: master
-#        ssh_opts: "-o StrictHostKeyChecking=no"
-#        recursive: no
-#        force: yes
+    - name: Clone Geospatial_Utiltiies repo
+      git:
+        repo: https://github.com/kotfic/Geospatial_Utilities.git
+        dest: /public/Geospatial_Utilities
+        version: master
+        ssh_opts: "-o StrictHostKeyChecking=no"
+        recursive: no
+        force: yes
 
     - name: Create .master file with IP for celery app
       shell: >-
@@ -105,108 +105,115 @@
         state: mounted
       become: yes
       become_user: root
-#
-#
-# - hosts: tag_ec2_type_master
-#   become: yes
-#   become_user: root
-#   tags:
-#     - rabbitmq
-#   tasks:
-#     - name: Install rabbitmq-server
-#       apt:
-#         name: rabbitmq-server
-#         update-cache: yes
-#
-#     - name: Allow remote guest users
-#       lineinfile:
-#         dest: /etc/rabbitmq/rabbitmq.conf
-#         line: "[{rabbit, [{loopback_users, []}]}]."
-#         create: yes
-#
-#     - name: Restart rabbitmq-server
-#       service:
-#         name: rabbitmq-server
-#         state: restarted
-#       tags:
-#         - restart
-#         - restart_rabbitmq
-#
-# - hosts: tag_ec2_type_master
-#   become: yes
-#   become_user: root
-#   tags:
-#     - celery
-#   tasks:
-#     - name: Install celery dependencies
-#       apt:
-#         name: "{{ item }}"
-#         update_cache: yes
-#       with_items:
-#         - python-dev
-#         - python-pip
-#
-#     - name: Install celery
-#       pip:
-#         name: celery
-#         version: 3.1.20
-#
-#
-# - hosts: tag_ec2_type_node
-#   become: yes
-#   become_user: root
-#   vars:
-#     celery_app: gddp_etl
-#     celery_dir: /public/nex/experimental/aws_etl
-#     celery_user: ubuntu
-#     celery_group: ubuntu
-#   tags:
-#     - celery
-#   tasks:
-#     - name: Install celery dependencies
-#       apt:
-#         name: "{{ item }}"
-#         update_cache: yes
-#       with_items:
-#         - python-dev
-#         - python-pip
-#
-#     - name: Install celery
-#       pip:
-#         name: celery
-#         version: 3.1.20
-#
-#     - name: Install celeryd init script
-#       copy:
-#         src: celeryd.script
-#         dest: /etc/init.d/celeryd
-#         mode: 0755
-#       tags:
-#         - update_celery_configs
-#
-#     - name: Install celeryd config script
-#       template:
-#         src: celeryd.conf
-#         dest: /etc/default/celeryd
-#         mode: 0640
-#       tags:
-#         - update_celery_configs
-#
-#     - name: Create log and run directories
-#       file:
-#         state: directory
-#         path: "{{ item }}"
-#         owner: ubuntu
-#         group: ubuntu
-#       with_items:
-#         - /var/log/celery
-#         - /var/run/celery
-#
-#     - name: Start celeryd service
-#       service:
-#         name: celeryd
-#         state: restarted
-#       tags:
-#         - restart
-#         - restart_celery
-#         - update_celery_configs
+
+
+- hosts: tag_ec2_type_master
+  become: yes
+  become_user: root
+  tags:
+    - rabbitmq
+  tasks:
+    - name: Install rabbitmq-server
+      apt:
+        name: rabbitmq-server
+        update-cache: yes
+
+    - name: Allow remote guest users
+      lineinfile:
+        dest: /etc/rabbitmq/rabbitmq.conf
+        line: "[{rabbit, [{loopback_users, []}]}]."
+        create: yes
+
+    - name: Restart rabbitmq-server
+      service:
+        name: rabbitmq-server
+        state: restarted
+      tags:
+        - restart
+        - restart_rabbitmq
+
+- hosts: tag_ec2_type_master
+  become: yes
+  become_user: root
+  tags:
+    - celery
+  vars:
+    celery_app: geoutils
+    celery_dir: /public/Geospatial_Utilities
+    celery_user: ubuntu
+    celery_group: ubuntu
+
+  tasks:
+    - name: Install celery dependencies
+      apt:
+        name: "{{ item }}"
+        update_cache: yes
+      with_items:
+        - python-dev
+        - python-pip
+
+    - name: Install celery
+      pip:
+        name: celery
+
+    - name: Install celery environment file
+      template:
+        src: celery.conf
+        dest: /public/celery.conf
+        owner: ubuntu
+      tags:
+        - update_celery_configs
+
+
+        #
+- hosts: tag_ec2_type_node
+  become: yes
+  become_user: root
+  vars:
+    celery_app: geoutils
+    celery_dir: /public/Geospatial_Utilities
+    celery_user: ubuntu
+    celery_group: ubuntu
+  tags:
+    - celery
+  tasks:
+    - name: Install celery dependencies
+      apt:
+        name: "{{ item }}"
+        update_cache: yes
+      with_items:
+        - python-dev
+        - python-pip
+
+    - name: Install celery
+      pip:
+        name: celery
+
+    - name: Install celery service file
+      template:
+        src: celery.service
+        dest: /etc/systemd/system/celery.service
+        mode: 0644
+      tags:
+        - update_celery_configs
+
+    - name: Create log and run directories
+      file:
+        state: directory
+        path: "{{ item }}"
+        owner: ubuntu
+        group: ubuntu
+      with_items:
+        - /var/log/celery
+        - /var/run/celery
+
+    - name: Start celery service
+      systemd:
+        name: celery
+        daemon_reload: yes
+        enabled: yes
+        state: started
+      tags:
+        - restart
+        - restart_celery
+        - update_celery_configs
