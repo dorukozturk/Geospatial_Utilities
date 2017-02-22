@@ -120,7 +120,7 @@
 
     - name: Allow remote guest users
       lineinfile:
-        dest: /etc/rabbitmq/rabbitmq.conf
+        dest: /etc/rabbitmq/rabbitmq.config
         line: "[{rabbit, [{loopback_users, []}]}]."
         create: yes
 
@@ -154,7 +154,18 @@
 
     - name: Install celery
       pip:
-        name: celery
+        name: "{{ item }}"
+      with_items:
+        - celery
+        - flower
+
+    - name: Install flower service file
+      template:
+        src: flower.service
+        dest: /etc/systemd/system/flower.service
+        mode: 0644
+      tags:
+        - update_flower_configs
 
     - name: Install celery environment file
       template:
@@ -163,6 +174,16 @@
         owner: ubuntu
       tags:
         - update_celery_configs
+
+    - name: Start flower service
+      systemd:
+        name: flower
+        daemon_reload: yes
+        enabled: yes
+        state: started
+      tags:
+        - restart_flower
+
 
 
         #
