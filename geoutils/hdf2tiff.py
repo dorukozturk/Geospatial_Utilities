@@ -106,7 +106,9 @@ def get_date(year, doy):
     """ Returns the date of the image """
 
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(doy-1)
-    return date.isoformat()
+    formatted_date = "{}:{}:01 00:00:00".format(date.year,
+                                                str(date.month).zfill(2))
+    return formatted_date
 
 def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
             reproject=True, warpMemoryLimit=4096):
