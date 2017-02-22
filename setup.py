@@ -9,6 +9,10 @@ setup(name='geoutils',
       license='Apache 2.0',
       packages=['geoutils'],
       zip_safe=False,
+      install_requires=[
+          'celery',
+          'requests',
+          'lxml'],
       entry_points={
           'console_scripts': [
               "hdf2tiff=geoutils.hdf2tiff:main"
