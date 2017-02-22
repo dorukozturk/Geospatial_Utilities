@@ -2,6 +2,7 @@
 # ansible_python_interpreter: python2
 instance_ami: ami-a58d0dc5
 
+# This must be changed to a unique prefix that no other instances share
 prefix: unique_prefix
 
 # Make sure to set private key so we can access from dynamic inventory
