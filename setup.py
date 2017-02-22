@@ -10,6 +10,8 @@ setup(name='geoutils',
       packages=['geoutils'],
       zip_safe=False,
       install_requires=[
+          'boto',
+          'ansible',
           'celery',
           'requests',
           'lxml'],

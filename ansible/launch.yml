@@ -1,0 +1,57 @@
+- hosts: localhost
+  connection: local
+  tasks:
+    - name: Launch master instance
+      ec2:
+        # Required variables
+        instance_type: "{{ ec2_master_instance_type }}"
+        image: "{{ ec2_master_ami }}"
+        # There can be only one...
+        exact_count: 1
+        region: "{{ ec2_region }}"
+
+        # Optional variables
+        group: "{{ ec2_security_group|default(omit) }}"
+        key_name: "{{ ec2_key_name|default(omit) }}"
+        instance_profile_name: "{{ ec2_instance_profile_name|default(omit) }}"
+        volumes: "{{ ec2_master_volumes|default(omit) }}"
+        # Derived or static variables
+        instance_tags: "{{ master_tag|combine(ec2_master_additional_tags|default({})) }}"
+        count_tag: "{{ master_tag }}"
+      register: master
+
+    - name: Launch node instances
+      ec2:
+        # Required variables
+        instance_type: "{{ ec2_node_instance_type }}"
+        image: "{{ ec2_node_ami }}"
+        exact_count: "{{ ec2_node_count }}"
+        region: "{{ ec2_region }}"
+
+        # Optional variables
+        group: "{{ ec2_security_group|default(omit) }}"
+        key_name: "{{ ec2_key_name|default(omit) }}"
+        instance_profile_name: "{{ ec2_instance_profile_name|default(omit) }}"
+        volumes: "{{ ec2_node_volumes|default(omit) }}"
+
+        # Derived or static variables
+        instance_tags: "{{ node_tag|combine(ec2_node_additional_tags|default({})) }}"
+        count_tag: "{{ node_tag }}"
+      register: nodes
+
+    - name: Poll instance data to get public DNS names
+      ec2_remote_facts:
+        filters:
+          instance-id: >-
+            {{ (master.tagged_instances | default([]) +
+            nodes.tagged_instances  | default([]) ) | map(attribute='id') | list }}
+        region: "{{ ec2_region }}"
+      register: instances
+
+    - name: Wait for SSH to come up on all instances
+      wait_for:
+        host: "{{ item.public_dns_name }}"
+        port: 22
+        timeout: "{{ ec2_launch_instance_timeout }}"
+        state: started
+      with_items: "{{ instances.instances }}"

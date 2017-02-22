@@ -1,0 +1,46 @@
+# Generated from kitware.org tangle - do not edit directly!
+# ansible_python_interpreter: python2
+instance_ami: ami-a58d0dc5
+
+prefix: unique_prefix
+
+# Make sure to set private key so we can access from dynamic inventory
+ansible_ssh_private_key_file: /path/to/some/file.pem
+
+ec2_launch_instance_timeout: 500
+ec2_terminate_wait_timeout: 800
+
+# General ec2 variables
+ec2_key_name: kotfic-NEX
+ec2_instance_profile_name: NEX
+ec2_region: us-west-2
+ec2_security_group: default
+
+# Master related variables
+ec2_master_ami: "{{ instance_ami }}"
+ec2_master_instance_type: t2.medium
+ec2_master_volumes:
+  - device_name: /dev/sda1
+    volume_size: 100
+
+# Name of master node
+master_tag:
+  Name: "{{ prefix }}_master"
+
+ec2_master_additional_tags:
+  ec2_pod: "{{ prefix }}"
+
+
+# Node related variables
+ec2_node_ami:  "{{ instance_ami }}"
+ec2_node_instance_type: t2.medium
+ec2_node_count: 1
+ec2_node_volumes:
+  - device_name: /dev/sda1
+    volume_size: 100
+
+node_tag:
+  Name: "{{ prefix }}_node"
+
+ec2_node_additional_tags:
+  ec2_pod: "{{ prefix }}"

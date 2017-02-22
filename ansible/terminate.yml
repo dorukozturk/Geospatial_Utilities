@@ -1,0 +1,20 @@
+- hosts: localhost
+  connection: local
+  tasks:
+    - name: Terminate nodes
+      ec2:
+        instance_type: "{{ ec2_master_instance_type }}"
+        image: "{{ ec2_master_ami }}"
+        region: "{{ ec2_region }}"
+        count_tag: "{{ node_tag }}"
+        wait: true
+        exact_count: 0
+
+    - name: Terminate master
+      ec2:
+        instance_type: "{{ ec2_node_instance_type }}"
+        image: "{{ ec2_node_ami }}"
+        region: "{{ ec2_region }}"
+        count_tag: "{{ master_tag }}"
+        wait: true
+        exact_count: 0
