@@ -9,29 +9,39 @@ from geoutils.hdf2tiff import hdf2tif
 from filechunkio import FileChunkIO
 
 DIRECTORY = "/tmp/etl/"
+
+try:
+    os.makedirs(DIRECTORY)
+except OSError:
+    pass
+
+
 MASTER_HOSTNAME = get_master_hostname()
 
 # Set up Logging
-logger = logging.getLogger('geoutils.etl')
-logger.setLevel(logging.INFO)
+def _logging():
+    logger = logging.getLogger('geoutils.etl')
+    logger.setLevel(logging.INFO)
 
-if not len(logger.handlers):
-    formatter = logging.Formatter(
-        '%(asctime)s | %(name)s | %(levelname)s | %(message)s')
+    if not len(logger.handlers):
+        formatter = logging.Formatter(
+            '%(asctime)s | %(name)s | %(levelname)s | %(message)s')
 
-    fh = logging.FileHandler(
-        os.path.join(DIRECTORY, "{}.log".format(MASTER_HOSTNAME)))
-    fh.setFormatter(formatter)
+        fh = logging.FileHandler(
+            os.path.join(DIRECTORY, "{}.log".format(MASTER_HOSTNAME)))
+        fh.setFormatter(formatter)
 
-    ch = logging.StreamHandler()
-    ch.setFormatter(formatter)
-    ch.setLevel(logging.DEBUG)
+        ch = logging.StreamHandler()
+        ch.setFormatter(formatter)
+        ch.setLevel(logging.DEBUG)
 
-    logger.addHandler(fh)
-    logger.addHandler(ch)
+        logger.addHandler(fh)
+        logger.addHandler(ch)
 
+    return logger
 
 def _extract(url, local_file):
+    logger = _logging()
     logger.info("Requesting {}".format(url))
 
     r = requests.get(url, stream=True)
@@ -47,17 +57,22 @@ def _extract(url, local_file):
 
 
 def _transform(local_file, **kwargs):
-
+    logger = _logging()
     filename, _ = os.path.splitext(os.path.basename(local_file))
     transformed_file = os.path.join(DIRECTORY, "{}.tiff".format(filename))
 
+    logger.info("Transforming {}".format(local_file))
+
     hdf2tif(local_file, transformed_file, **kwargs)
+
+    logger.info("Finished transforming {}".format(transformed_file))
 
     return transformed_file
 
 
 def _load(transformed_file, s3_bucket_name):
-            # Upload to S3
+    logger = _logging()
+    # Upload to S3
     # See: http://boto.cloudhackers.com/en/latest/s3_tut.html
     transformed_size = os.stat(transformed_file).st_size
     logger.info("Uploading {} to '{}' s3 bucket.".format(
@@ -97,12 +112,13 @@ def _load(transformed_file, s3_bucket_name):
           max_retries=3, acks_late=True)
 def etl(task, url, s3_bucket_name,
         extract=True, transform=True, load=True, **kwargs):
-
     try:
         os.makedirs(DIRECTORY)
     except OSError:
         pass
 
+
+    logger = _logging()
     logger.info("Starting new ETL task for {}".format(os.path.basename(url)))
 
 
@@ -127,6 +143,4 @@ def etl(task, url, s3_bucket_name,
 
 if __name__ == "__main__":
     etl("http://gweld-download.cr.usgs.gov/collections/weld.global.annual.2011.v3.0/L57.Globe.annual.2011.hh18vv02.h2v3.doy097to281.NBAR.v3.0.hdf",
-        "kitware-weld-tiff-etl",
-        extract=False, load=False,
-        bands=(9))
+        "kitware-weld-tiff-etl", bands=(9,))
