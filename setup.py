@@ -10,11 +10,14 @@ setup(name='geoutils',
       packages=['geoutils'],
       zip_safe=False,
       install_requires=[
-          'boto',
           'ansible',
+          'boto',
+          'click',
           'celery',
-          'requests',
-          'lxml'],
+          'gdal',
+          'filechunkio',
+          'lxml',
+          'requests'],
       entry_points={
           'console_scripts': [
               "hdf2tiff=geoutils.hdf2tiff:main"

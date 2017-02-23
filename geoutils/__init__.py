@@ -1,11 +1,9 @@
 import os
 from celery import Celery
+from utils import get_master_hostname
 
-try:
-    with open("/public/.master", "r") as fh:
-        master_hostname = fh.read().rstrip()
-except IOError:
-    master_hostname = 'localhost'
+
+master_hostname = get_master_hostname()
 
 app = Celery('example',
              broker='amqp://guest@{}//'.format(master_hostname),

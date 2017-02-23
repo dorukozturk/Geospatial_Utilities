@@ -6,6 +6,15 @@ import click
 
 from tempfile import mkdtemp
 
+
+def get_master_hostname():
+    try:
+        with open("/public/.master", "r") as fh:
+            return fh.read().rstrip()
+    except IOError:
+        return 'localhost'
+
+
 # Backport of tempfile.TemporaryDirectory() from python 3.
 # See: http://stackoverflow.com/questions/19296146/tempfile-temporarydirectory-context-manager-in-python-2-7
 class TemporaryDirectory(object):
