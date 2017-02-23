@@ -143,4 +143,4 @@ def etl(task, url, s3_bucket_name,
 
 if __name__ == "__main__":
     etl("http://gweld-download.cr.usgs.gov/collections/weld.global.annual.2011.v3.0/L57.Globe.annual.2011.hh18vv02.h2v3.doy097to281.NBAR.v3.0.hdf",
-        "kitware-weld-tiff-etl", bands=(9,))
+        "kitware-weld-tiff-etl", clobber=True, bands=(9,))

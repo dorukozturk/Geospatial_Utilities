@@ -175,7 +175,7 @@ def hdf2tif(hdf, tiff_path, bands=None, clobber=False,
         # Inject the band statistics so that
         # we do not have to enter them
         for band in range(dataset.RasterCount):
-            srcband = dataset.GetRasterBand(band+1).ComputeStatistics(0)
+            srcband = dataset.GetRasterBand(band+1).ComputeStatistics(False)
 
         # Flush the dataset
         dataset = None
