@@ -103,6 +103,14 @@ def _load(transformed_file, s3_bucket_name):
             logger.debug("Uploaded chunk {}".format(i + 1))
         mp.complete_upload()
 
+        logger.info("Finished uploading {}".format(transformed_file))
+
+        # Cleanup
+        try:
+            os.remove(transformed_file)
+        except OSError:
+            pass
+
     except Exception as e:
         mp.cancel_upload()
         raise e
@@ -136,6 +144,13 @@ def etl(task, url, s3_bucket_name,
 
         if load:
             _load(transformed_file, s3_bucket_name)
+
+        # Cleanup
+        try:
+            os.remove(local_file)
+        except OSError:
+            pass
+
 
     except Exception as exc:
         raise task.retry(exc=exc)

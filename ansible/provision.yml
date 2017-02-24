@@ -155,14 +155,18 @@
         name: "{{ item }}"
         update-cache: yes
       with_items:
+        - python-pip
         - libssl-dev
+        - libgdal-dev
         - gdal-bin
         - python-gdal
 
     - name: Install Geospatial_Utilities
       pip:
         name: /public/Geospatial_Utilities/
-
+      environment:
+        CPLUS_INCLUDE_PATH: /usr/include/gdal
+        C_INCLUDE_PATH: /usr/include/gdal
 
 
 - hosts: tag_ec2_type_master
@@ -266,7 +270,7 @@
         name: celery
         daemon_reload: yes
         enabled: yes
-        state: started
+        state: restarted
       tags:
         - restart
         - restart_celery
