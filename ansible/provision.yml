@@ -198,7 +198,7 @@
 
     - name: Install flower service file
       template:
-        src: flower.service
+        src: templates/flower.service
         dest: /etc/systemd/system/flower.service
         mode: 0644
       tags:
@@ -206,7 +206,7 @@
 
     - name: Install celery environment file
       template:
-        src: celery.conf
+        src: templates/celery.conf
         dest: /public/celery.conf
         owner: ubuntu
       tags:
@@ -249,7 +249,7 @@
 
     - name: Install celery service file
       template:
-        src: celery.service
+        src: templates/celery.service
         dest: /etc/systemd/system/celery.service
         mode: 0644
       tags:
