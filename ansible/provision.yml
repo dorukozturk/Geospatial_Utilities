@@ -1,277 +1,153 @@
-- hosts: all
-  gather_facts: False
-  tasks:
-    - name: Ensure python2 is available on ubuntu 16.04 hosts
-      raw: sudo bash -c "test -e /usr/bin/python || (apt -qqy update && apt install -qy python-minimal)"
-
-- hosts: tag_ec2_type_master
+- name: Launch master and node instances for provisioning
+  hosts: localhost
+  connection: local
   tags:
-    - nfs
+    - always
   tasks:
-    - name: Get nfs-kernel-server
-      apt:
-        name: nfs-kernel-server
-        update-cache: yes
-      become: yes
-      become_user: root
+    - name: Launch master instance
+      ec2:
+        # Required variables
+        instance_type: "{{ ec2_master_instance_type }}"
+        image: "{{ ec2_master_ami }}"
+        # There can be only one...
+        exact_count: 1
+        region: "{{ ec2_region }}"
 
-    - name: Set up /public
-      file:
-        state: directory
-        path: /public
-        owner: ubuntu
-        group: ubuntu
-      become: yes
-      become_user: root
+        # Optional variables
+        group: "{{ ec2_security_group|default(omit) }}"
+        key_name: "{{ ec2_key_name|default(omit) }}"
+        instance_profile_name: "{{ ec2_instance_profile_name|default(omit) }}"
+        volumes: "{{ ec2_master_volumes|default(omit) }}"
+        # Derived or static variables
+        instance_tags:
+          Name: "provision_{{ master_tag['Name'] }}"
+          ec2_type: master
+          ec2_group: "{{ prefix }}"
 
-    - name: get vpc_cird
-      shell: >-
-        curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/$(curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/ 2>/dev/null | head -n 1)vpc-ipv4-cidr-block
-      register: vpc_cird_command
+        count_tag:
+          Name: "provision_{{ master_tag['Name'] }}"
+      register: master_instances
 
-    - name: set vpc_cird
-      set_fact:
-        vpc_cird: "{{ vpc_cird_command.stdout }}"
+    - name: Launch node instances
+      ec2:
+        # Required variables
+        instance_type: "{{ ec2_node_instance_type }}"
+        image: "{{ ec2_node_ami }}"
+        exact_count: 1
+        region: "{{ ec2_region }}"
 
-    - name: update /etc/exports
-      lineinfile:
-        dest: /etc/exports
-        line: "/public {{ vpc_cird }}(rw,sync,no_subtree_check)"
-      become: yes
-      become_user: root
+        # Optional variables
+        group: "{{ ec2_security_group|default(omit) }}"
+        key_name: "{{ ec2_key_name|default(omit) }}"
+        instance_profile_name: "{{ ec2_instance_profile_name|default(omit) }}"
+        volumes: "{{ ec2_node_volumes|default(omit) }}"
 
-    - name: restart nfs server
-      service:
-        name: nfs-kernel-server
-        state: restarted
-      tags:
-        - restart
-        - restart_nfs
-      become: yes
-      become_user: root
+        # Derived or static variables
+        instance_tags:
+          Name: "provision_{{ node_tag['Name'] }}"
+          ec2_type: node
+          ec2_group: "{{ prefix }}"
 
-    - name: Ensure git is on the master node
-      apt:
-        name: git
-      become: yes
-      become_user: root
+        count_tag:
+          Name: "provision_{{ node_tag['Name'] }}"
+      register: node_instances
 
+    - name: Poll instance data to get public DNS names
+      ec2_remote_facts:
+        filters:
+          instance-id: >-
+            {{ ( master_instances.tagged_instances + master_instances.instances +
+                 node_instances.tagged_instances + node_instances.instances | default([])
+               ) | map(attribute='id') | list }}
+        region: "{{ ec2_region }}"
+      register: instances
 
-- hosts: tag_ec2_type_node
-  tags:
-    - nfs
-  vars:
-    master_hostname: "{{ groups['tag_ec2_type_master'][0] }}"
-    master_ip: "{{ hostvars[groups['tag_ec2_type_master'][0]]['ec2_ip_address'] }}"
-    master_private_ip: "{{ hostvars[groups['tag_ec2_type_master'][0]]['ec2_private_ip_address'] }}"
-  tasks:
-
-    - name: Get nfs-kernel-server
-      apt:
-        name: nfs-common
-        update-cache: yes
-      become: yes
-      become_user: root
-
-    - name: Set up /public
-      file:
-        state: directory
-        path: /public
-        owner: ubuntu
-        group: ubuntu
-      become: yes
-      become_user: root
-
-    - name: Mount /public directory
-      mount:
-        name: /public
-        src: "{{ master_private_ip }}:/public"
-        fstype: nfs
-        state: mounted
-      become: yes
-      become_user: root
-
-
-- hosts: tag_ec2_type_master
-  become: yes
-  become_user: root
-  tags:
-    - rabbitmq
-  tasks:
-    - name: Install rabbitmq-server
-      apt:
-        name: rabbitmq-server
-        update-cache: yes
-
-    - name: Allow remote guest users
-      lineinfile:
-        dest: /etc/rabbitmq/rabbitmq.config
-        line: "[{rabbit, [{loopback_users, []}]}]."
-        create: yes
-
-    - name: Restart rabbitmq-server
-      service:
-        name: rabbitmq-server
-        state: restarted
-      tags:
-        - restart
-        - restart_rabbitmq
-
-
-- hosts: tag_ec2_type_master
-  become: yes
-  become_user: root
-  tags:
-    - dependencies
-  tasks:
-    # NOTE:  before merging into master branch has to be changed
-    - name: Clone Geospatial_Utiltiies repo
-      git:
-        repo: https://github.com/kotfic/Geospatial_Utilities.git
-        dest: /public/Geospatial_Utilities
-        version: master
-        ssh_opts: "-o StrictHostKeyChecking=no"
-        recursive: no
-        force: yes
-
-    - name: Create .master file with IP for celery app
-      shell: >-
-        echo {{ ec2_private_ip_address }} > /public/.master
-
-- hosts: all
-  become: yes
-  become_user: root
-  tags:
-    - dependencies
-  tasks:
-    - name: add ubuntugis ppa
-      apt_repository:
-        repo: "ppa:ubuntugis/ppa"
-        state: present
-        update_cache: yes
-
-    - name: Install GDAL and python-GDAL
-      apt:
-        name: "{{ item }}"
-        update-cache: yes
-      with_items:
-        - python-pip
-        - libssl-dev
-        - libgdal-dev
-        - gdal-bin
-        - python-gdal
-
-    - name: Install Geospatial_Utilities
-      pip:
-        name: /public/Geospatial_Utilities/
-      environment:
-        CPLUS_INCLUDE_PATH: /usr/include/gdal
-        C_INCLUDE_PATH: /usr/include/gdal
-
-
-- hosts: tag_ec2_type_master
-  become: yes
-  become_user: root
-  tags:
-    - celery
-  vars:
-    celery_app: geoutils
-    celery_dir: /public/Geospatial_Utilities
-    celery_user: ubuntu
-    celery_group: ubuntu
-
-  tasks:
-    - name: Install celery dependencies
-      apt:
-        name: "{{ item }}"
-        update_cache: yes
-      with_items:
-        - python-dev
-        - python-pip
-
-    - name: Install celery
-      pip:
-        name: "{{ item }}"
-      with_items:
-        - celery
-        - flower
-
-    - name: Install flower service file
-      template:
-        src: templates/flower.service
-        dest: /etc/systemd/system/flower.service
-        mode: 0644
-      tags:
-        - update_flower_configs
-
-    - name: Install celery environment file
-      template:
-        src: templates/celery.conf
-        dest: /public/celery.conf
-        owner: ubuntu
-      tags:
-        - update_celery_configs
-
-    - name: Start flower service
-      systemd:
-        name: flower
-        daemon_reload: yes
-        enabled: yes
+    - name: Wait for SSH to come up on all instances
+      wait_for:
+        host: "{{ item.public_dns_name }}"
+        port: 22
+        timeout: "{{ ec2_launch_instance_timeout }}"
         state: started
-      tags:
-        - restart_flower
+      with_items: "{{ instances.instances }}"
 
+    - name: Add nodes to groups.
+      add_host:
+        hostname: "{{ item['public_ip_address'] }}"
+        groupname: "tag_ec2_type_{{ item['tags']['ec2_type'] }},all_instances"
+      with_items: "{{ instances.instances }}"
 
-
-        #
-- hosts: tag_ec2_type_node
-  become: yes
-  become_user: root
-  vars:
-    celery_app: geoutils
-    celery_dir: /public/Geospatial_Utilities
-    celery_user: ubuntu
-    celery_group: ubuntu
+- name: Ensure python2 is available on ubuntu 16.04 hosts
+  hosts: all_instances
+  gather_facts: False
   tags:
-    - celery
+    - always
   tasks:
-    - name: Install celery dependencies
-      apt:
-        name: "{{ item }}"
-        update_cache: yes
-      with_items:
-        - python-dev
-        - python-pip
+    - raw: sudo bash -c "test -e /usr/bin/python || (apt -qqy update && apt install -qy python-minimal)"
 
-    - name: Install celery
-      pip:
-        name: celery
 
-    - name: Install celery service file
-      template:
-        src: templates/celery.service
-        dest: /etc/systemd/system/celery.service
-        mode: 0644
-      tags:
-        - update_celery_configs
+- include: details.yml
+  tags:
+    - launch
 
-    - name: Create log and run directories
-      file:
-        state: directory
-        path: "{{ item }}"
-        owner: ubuntu
-        group: ubuntu
-      with_items:
-        - /var/log/celery
-        - /var/run/celery
+- name: Create AMI images and terminate instances
+  hosts: localhost
+  connection: local
+  vars:
+    snapshot_date: "{{lookup('pipe', 'date +%Y%m%dT%H%M') }}"
+  tags:
+    - finish
+  tasks:
+    - name: Gather node instance details
+      ec2_remote_facts:
+        filters:
+          "tag:ec2_group": "{{ prefix }}"
+          "tag:ec2_type": node
+          instance-state-name: running
+        region: "{{ ec2_region }}"
+      register: node_instances
 
-    - name: Start celery service
-      systemd:
-        name: celery
-        daemon_reload: yes
-        enabled: yes
-        state: restarted
-      tags:
-        - restart
-        - restart_celery
-        - update_celery_configs
+    - name: Gather master instance details
+      ec2_remote_facts:
+        filters:
+          "tag:ec2_group": "{{ prefix }}"
+          "tag:ec2_type": master
+          instance-state-name: running
+        region: "{{ ec2_region }}"
+      register: master_instances
+
+    - name: Stop node instances
+      ec2:
+        instance_ids: "{{ node_instances.instances | map(attribute='id') | list }}"
+        region: '{{ ec2_region }}'
+        state: stopped
+        wait: True
+
+    - name: Stop master instances
+      ec2:
+        instance_ids: "{{ master_instances.instances | map(attribute='id') | list }}"
+        region: '{{ ec2_region }}'
+        state: stopped
+        wait: True
+
+    - name: Generate AMIs
+      ec2_ami:
+        instance_id: "{{ item['id'] }}"
+        wait: yes
+        name: "{{ prefix }}_{{ item['tags']['ec2_type'] }}_ami-{{ snapshot_date }}"
+        region: "{{ ec2_region }}"
+        tags:
+          Name: "{{ prefix }}_{{ item['tags']['ec2_type'] }}_ami-{{ snapshot_date }}"
+          ec2_type: "{{ item['tags']['ec2_type'] }}"
+          ec2_group: "{{ prefix }}"
+      with_items: "{{ instances.instances }}"
+
+    - name: Terminate instances
+      ec2:
+        instance_ids: >-
+          {{ ( (master_instances.tagged_instances | default([])) +
+               (master_instances.instances | default([])) +
+               (node_instances.tagged_instances | default([])) +
+               (node_instances.instances | default([]))
+              ) | map(attribute='id') | list }}
+        region: '{{ ec2_region }}'
+        state: absent
