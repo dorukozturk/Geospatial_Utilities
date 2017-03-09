@@ -11,12 +11,13 @@ app = Celery('example',
              include=['geoutils.tasks'])
 
 app.conf.update(
-    CELERY_TASK_RESULT_EXPIRES=300,
-    CELERY_SEND_EVENTS=True,
-    CELERY_SEND_TASK_SENT_EVENT=True,
-    CELERY_TASK_SERIALIZER="json",
-    CELERY_TASK_TIME_LIMIT=1800,
-    CELERY_TASK_SOFT_TIME_LIMIT=1800,
-    CELERY_TRACK_STARTED=True,
-    CELERYD_PREFETCH_MULTIPLIER=1
+    result_expires=300,
+    worker_send_task_events=True,
+    task_send_sent_event=True,
+    task_time_limit=1800,
+    task_soft_time_limit=1800,
+    track_started=True,
+    worker_prefetch_multiplier=1,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True
 )
