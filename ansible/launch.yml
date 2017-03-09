@@ -1,5 +1,6 @@
 - hosts: localhost
   connection: local
+  gather_facts: false
   tasks:
     # Find the Master AMI if master_instance_ami is not specified
 
@@ -43,6 +44,8 @@
         count_tag: "{{ master_tag }}"
         wait: yes
       register: master
+      tags:
+        - master
 
 
     - name: Poll instance data to get public DNS names
@@ -52,6 +55,8 @@
             {{ master.tagged_instances | map(attribute='id') | list }}
         region: "{{ ec2_region }}"
       register: instances
+      tags:
+        - master
 
     - name: Wait for SSH to come up on Master
       wait_for:
@@ -60,6 +65,8 @@
         timeout: "{{ ec2_launch_instance_timeout }}"
         state: started
       with_items: "{{ instances.instances }}"
+      tags:
+        - master
 
     - name: Find latest Node AMI
       ec2_ami_find:
@@ -71,7 +78,6 @@
           ec2_type: node
         region: "{{ ec2_region }}"
       register: node_amis
-
 
     - name: Register to master_instance_ami variable
       set_fact:

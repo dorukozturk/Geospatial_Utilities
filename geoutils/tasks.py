@@ -188,7 +188,9 @@ def _tile_transform(local_file, output_directory, **kwargs):
 
     tiff2tile(local_file, output_directory)
 
-    logging.info("Finished transforming {}, files in {}".format(
+    logger.info("Generated {} files".format(len(os.listdir(output_directory))))
+
+    logger.info("Finished transforming {}, files in {}".format(
         local_file, output_directory))
 
     return output_directory
