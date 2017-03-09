@@ -61,7 +61,6 @@
         state: started
       with_items: "{{ instances.instances }}"
 
-
     - name: Find latest Node AMI
       ec2_ami_find:
         state: available
