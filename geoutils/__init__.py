@@ -18,6 +18,7 @@ app.conf.update(
     task_soft_time_limit=1800,
     track_started=True,
     worker_prefetch_multiplier=1,
+    worker_concurrency=1,
     task_acks_late=True,
     task_reject_on_worker_lost=True
 )
