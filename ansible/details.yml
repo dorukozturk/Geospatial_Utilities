@@ -1,0 +1,270 @@
+- name: Install NFS service on master node
+  hosts: tag_ec2_type_master
+  tags:
+    - nfs
+  tasks:
+    - name: Get nfs-kernel-server
+      apt:
+        name: nfs-kernel-server
+        update-cache: yes
+      become: yes
+      become_user: root
+
+    - name: Set up /public
+      file:
+        state: directory
+        path: /public
+        owner: ubuntu
+        group: ubuntu
+      become: yes
+      become_user: root
+
+    - name: get vpc_cird
+      shell: >-
+        curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/$(curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/ 2>/dev/null | head -n 1)vpc-ipv4-cidr-block
+      register: vpc_cird_command
+
+    - name: set vpc_cird
+      set_fact:
+        vpc_cird: "{{ vpc_cird_command.stdout }}"
+
+    - name: update /etc/exports
+      lineinfile:
+        dest: /etc/exports
+        line: "/public {{ vpc_cird }}(rw,sync,no_subtree_check)"
+      become: yes
+      become_user: root
+
+    - name: restart nfs server
+      service:
+        name: nfs-kernel-server
+        state: restarted
+      tags:
+        - restart
+        - restart_nfs
+      become: yes
+      become_user: root
+
+    - name: Ensure git is on the master node
+      apt:
+        name: git
+      become: yes
+      become_user: root
+
+- name: Install NFS on node instance
+  hosts: tag_ec2_type_node
+  tags:
+    - nfs
+  vars:
+    master_private_ip: "{{ hostvars[groups['tag_ec2_type_master'][0]]['ansible_default_ipv4']['address'] }}"
+  tasks:
+    - name: Get nfs-kernel-server
+      apt:
+        name: nfs-common
+        update-cache: yes
+      become: yes
+      become_user: root
+
+    - name: Set up /public
+      file:
+        state: directory
+        path: /public
+        owner: ubuntu
+        group: ubuntu
+      become: yes
+      become_user: root
+
+    - name: Mount /public directory
+      mount:
+        name: /public
+        src: "{{ master_private_ip }}:/public"
+        fstype: nfs
+        state: mounted
+      become: yes
+      become_user: root
+
+
+- name: Install rabbitMQ service
+  hosts: tag_ec2_type_master
+  become: yes
+  become_user: root
+  tags:
+    - rabbitmq
+  tasks:
+    - name: Install rabbitmq-server
+      apt:
+        name: rabbitmq-server
+        update-cache: yes
+
+    - name: Allow remote guest users
+      lineinfile:
+        dest: /etc/rabbitmq/rabbitmq.config
+        line: "[{rabbit, [{loopback_users, []}]}]."
+        create: yes
+
+    - name: Restart rabbitmq-server
+      service:
+        name: rabbitmq-server
+        state: restarted
+      tags:
+        - restart
+        - restart_rabbitmq
+
+
+- name: Clone
+  hosts: tag_ec2_type_master
+  become: yes
+  become_user: root
+  tags:
+    - dependencies
+  vars:
+    master_private_ip: "{{ hostvars[groups['tag_ec2_type_master'][0]]['ansible_default_ipv4']['address'] }}"
+  tasks:
+    # NOTE:  before merging into master branch has to be changed
+    - name: Clone Geospatial_Utiltiies repo
+      git:
+        repo: https://github.com/kotfic/Geospatial_Utilities.git
+        dest: /public/Geospatial_Utilities
+        version: master
+        ssh_opts: "-o StrictHostKeyChecking=no"
+        recursive: no
+        force: yes
+
+    - name: Create .master file with IP for celery app
+      shell: >-
+        echo {{ master_private_ip }} > /public/.master
+
+- hosts: all_instances
+  become: yes
+  become_user: root
+  tags:
+    - dependencies
+  tasks:
+    - name: add ubuntugis ppa
+      apt_repository:
+        repo: "ppa:ubuntugis/ppa"
+        state: present
+        update_cache: yes
+
+    - name: Install GDAL and python-GDAL
+      apt:
+        name: "{{ item }}"
+        update-cache: yes
+      with_items:
+        - python-pip
+        - libssl-dev
+        - libgdal-dev
+        - gdal-bin
+        - python-gdal
+
+    - name: Install Geospatial_Utilities
+      pip:
+        name: /public/Geospatial_Utilities/
+        editable: true
+      environment:
+        CPLUS_INCLUDE_PATH: /usr/include/gdal
+        C_INCLUDE_PATH: /usr/include/gdal
+
+- hosts: tag_ec2_type_master
+  become: yes
+  become_user: root
+  tags:
+    - celery
+  vars:
+    celery_app: geoutils
+    celery_dir: /public/Geospatial_Utilities
+    celery_user: ubuntu
+    celery_group: ubuntu
+
+  tasks:
+    - name: Install celery dependencies
+      apt:
+        name: "{{ item }}"
+        update_cache: yes
+      with_items:
+        - python-dev
+        - python-pip
+
+    - name: Install celery
+      pip:
+        name: "{{ item }}"
+      with_items:
+        - celery
+        - flower
+
+    - name: Install flower service file
+      template:
+        src: templates/flower.service
+        dest: /etc/systemd/system/flower.service
+        mode: 0644
+      tags:
+        - update_flower_configs
+
+    - name: Install celery environment file
+      template:
+        src: templates/celery.conf
+        dest: /public/celery.conf
+        owner: ubuntu
+      tags:
+        - update_celery_configs
+
+    - name: Start flower service
+      systemd:
+        name: flower
+        daemon_reload: yes
+        enabled: yes
+        state: started
+      tags:
+        - restart_flower
+
+- hosts: tag_ec2_type_node
+  become: yes
+  become_user: root
+  vars:
+    celery_app: geoutils
+    celery_dir: /public/Geospatial_Utilities
+    celery_user: ubuntu
+    celery_group: ubuntu
+  tags:
+    - celery
+  tasks:
+    - name: Install celery dependencies
+      apt:
+        name: "{{ item }}"
+        update_cache: yes
+      with_items:
+        - python-dev
+        - python-pip
+
+    - name: Install celery
+      pip:
+        name: celery
+
+    - name: Install celery service file
+      template:
+        src: templates/celery.service
+        dest: /etc/systemd/system/celery.service
+        mode: 0644
+      tags:
+        - update_celery_configs
+
+    - name: Create log and run directories
+      file:
+        state: directory
+        path: "{{ item }}"
+        owner: ubuntu
+        group: ubuntu
+      with_items:
+        - /var/log/celery
+        - /var/run/celery
+
+    - name: Start celery service
+      systemd:
+        name: celery
+        daemon_reload: yes
+        enabled: yes
+        state: restarted
+      tags:
+        - restart
+        - restart_celery
+        - update_celery_configs

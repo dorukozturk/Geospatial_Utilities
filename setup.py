@@ -9,6 +9,15 @@ setup(name='geoutils',
       license='Apache 2.0',
       packages=['geoutils'],
       zip_safe=False,
+      install_requires=[
+          'ansible',
+          'boto',
+          'click',
+          'celery',
+          'gdal',
+          'filechunkio',
+          'lxml',
+          'requests'],
       entry_points={
           'console_scripts': [
               "hdf2tiff=geoutils.hdf2tiff:main"

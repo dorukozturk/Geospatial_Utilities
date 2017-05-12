@@ -1,0 +1,153 @@
+- name: Launch master and node instances for provisioning
+  hosts: localhost
+  connection: local
+  tags:
+    - always
+  tasks:
+    - name: Launch master instance
+      ec2:
+        # Required variables
+        instance_type: "{{ ec2_master_instance_type }}"
+        image: "{{ ec2_master_ami }}"
+        # There can be only one...
+        exact_count: 1
+        region: "{{ ec2_region }}"
+
+        # Optional variables
+        group: "{{ ec2_security_group|default(omit) }}"
+        key_name: "{{ ec2_key_name|default(omit) }}"
+        instance_profile_name: "{{ ec2_instance_profile_name|default(omit) }}"
+        volumes: "{{ ec2_master_volumes|default(omit) }}"
+        # Derived or static variables
+        instance_tags:
+          Name: "provision_{{ master_tag['Name'] }}"
+          ec2_type: master
+          ec2_group: "{{ prefix }}"
+
+        count_tag:
+          Name: "provision_{{ master_tag['Name'] }}"
+      register: master_instances
+
+    - name: Launch node instances
+      ec2:
+        # Required variables
+        instance_type: "{{ ec2_node_instance_type }}"
+        image: "{{ ec2_node_ami }}"
+        exact_count: 1
+        region: "{{ ec2_region }}"
+
+        # Optional variables
+        group: "{{ ec2_security_group|default(omit) }}"
+        key_name: "{{ ec2_key_name|default(omit) }}"
+        instance_profile_name: "{{ ec2_instance_profile_name|default(omit) }}"
+        volumes: "{{ ec2_node_volumes|default(omit) }}"
+
+        # Derived or static variables
+        instance_tags:
+          Name: "provision_{{ node_tag['Name'] }}"
+          ec2_type: node
+          ec2_group: "{{ prefix }}"
+
+        count_tag:
+          Name: "provision_{{ node_tag['Name'] }}"
+      register: node_instances
+
+    - name: Poll instance data to get public DNS names
+      ec2_remote_facts:
+        filters:
+          instance-id: >-
+            {{ ( master_instances.tagged_instances + master_instances.instances +
+                 node_instances.tagged_instances + node_instances.instances | default([])
+               ) | map(attribute='id') | list }}
+        region: "{{ ec2_region }}"
+      register: instances
+
+    - name: Wait for SSH to come up on all instances
+      wait_for:
+        host: "{{ item.public_dns_name }}"
+        port: 22
+        timeout: "{{ ec2_launch_instance_timeout }}"
+        state: started
+      with_items: "{{ instances.instances }}"
+
+    - name: Add nodes to groups.
+      add_host:
+        hostname: "{{ item['public_ip_address'] }}"
+        groupname: "tag_ec2_type_{{ item['tags']['ec2_type'] }},all_instances"
+      with_items: "{{ instances.instances }}"
+
+- name: Ensure python2 is available on ubuntu 16.04 hosts
+  hosts: all_instances
+  gather_facts: False
+  tags:
+    - always
+  tasks:
+    - raw: sudo bash -c "test -e /usr/bin/python || (apt -qqy update && apt install -qy python-minimal)"
+
+
+- include: details.yml
+  tags:
+    - launch
+
+- name: Create AMI images and terminate instances
+  hosts: localhost
+  connection: local
+  vars:
+    snapshot_date: "{{lookup('pipe', 'date +%Y%m%dT%H%M') }}"
+  tags:
+    - finish
+  tasks:
+    - name: Gather node instance details
+      ec2_remote_facts:
+        filters:
+          "tag:ec2_group": "{{ prefix }}"
+          "tag:ec2_type": node
+          instance-state-name: running
+        region: "{{ ec2_region }}"
+      register: node_instances
+
+    - name: Gather master instance details
+      ec2_remote_facts:
+        filters:
+          "tag:ec2_group": "{{ prefix }}"
+          "tag:ec2_type": master
+          instance-state-name: running
+        region: "{{ ec2_region }}"
+      register: master_instances
+
+    - name: Stop node instances
+      ec2:
+        instance_ids: "{{ node_instances.instances | map(attribute='id') | list }}"
+        region: '{{ ec2_region }}'
+        state: stopped
+        wait: True
+
+    - name: Stop master instances
+      ec2:
+        instance_ids: "{{ master_instances.instances | map(attribute='id') | list }}"
+        region: '{{ ec2_region }}'
+        state: stopped
+        wait: True
+
+    - name: Generate AMIs
+      ec2_ami:
+        instance_id: "{{ item['id'] }}"
+        wait: yes
+        name: "{{ prefix }}_{{ item['tags']['ec2_type'] }}_ami-{{ snapshot_date }}"
+        region: "{{ ec2_region }}"
+        tags:
+          Name: "{{ prefix }}_{{ item['tags']['ec2_type'] }}_ami-{{ snapshot_date }}"
+          ec2_type: "{{ item['tags']['ec2_type'] }}"
+          ec2_group: "{{ prefix }}"
+      with_items: "{{ instances.instances }}"
+
+    - name: Terminate instances
+      ec2:
+        instance_ids: >-
+          {{ ( (master_instances.tagged_instances | default([])) +
+               (master_instances.instances | default([])) +
+               (node_instances.tagged_instances | default([])) +
+               (node_instances.instances | default([]))
+              ) | map(attribute='id') | list }}
+        region: '{{ ec2_region }}'
+        state: absent
